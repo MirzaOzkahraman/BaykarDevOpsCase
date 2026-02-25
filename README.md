@@ -5,7 +5,7 @@ Bu proje, bir **MERN (MongoDB, Express, React, Node.js) stack** uygulaması ve b
 #  DevOps Technical Case Study
 **Aday:** Muhammed Mirza Özkahraman  
 **Rol:** DevOps Engineer Case Study  
-**Tarih:** 25 February 2026  
+**Tarih:** 25 Şubat 2026  
 **Github:** [MirzaOzkahraman/BaykarDevOpsCase](https://github.com/MirzaOzkahraman/BaykarDevOpsCase)
 ---
 
