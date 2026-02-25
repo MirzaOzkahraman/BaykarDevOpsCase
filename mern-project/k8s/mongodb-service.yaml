@@ -1,0 +1,24 @@
+# =============================================================================
+# MongoDB Headless Service - StatefulSet için DNS tabanlı keşif
+# Headless Service (clusterIP: None): Her pod'a doğrudan DNS ile erişilir
+# Format: mongodb-0.mongodb-headless.mern-app.svc.cluster.local
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-headless
+  namespace: mern-app
+  labels:
+    app: mongodb
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless Service - Pod IP'lerine doğrudan erişim
+  selector:
+    app: mongodb
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+      name: mongodb

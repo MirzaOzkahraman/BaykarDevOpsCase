@@ -1,0 +1,55 @@
+# =============================================================================
+# Frontend Deployment - React (Nginx ile serve edilir)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mern-app
+  labels:
+    app: frontend
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 2  # Yüksek erişilebilirlik için 2 replika
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        app.kubernetes.io/name: mern-app
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: frontend
+          # ECR image URL'si - CI/CD pipeline tarafından güncellenecek
+          image: AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/mern-app/frontend:latest
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          # Kaynak limitleri
+          resources:
+            requests:
+              cpu: "50m"        # 0.05 CPU garantili
+              memory: "64Mi"    # 64MB RAM garantili
+            limits:
+              cpu: "250m"       # Maksimum 0.25 CPU
+              memory: "256Mi"   # Maksimum 256MB RAM
+          # Hazırlık kontrolü
+          readinessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          # Canlılık kontrolü
+          livenessProbe:
+            httpGet:
+              path: /nginx-health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3

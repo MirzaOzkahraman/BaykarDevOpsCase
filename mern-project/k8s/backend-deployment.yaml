@@ -1,0 +1,71 @@
+# =============================================================================
+# Backend Deployment - Node.js/Express API
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mern-app
+  labels:
+    app: backend
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2  # Yüksek erişilebilirlik için 2 replika
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: mern-app
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          # ECR image URL'si - CI/CD pipeline tarafından güncellenecek
+          # Placeholder: AWS_ACCOUNT_ID ve AWS_REGION değiştirilmeli
+          image: AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/mern-app/backend:latest
+          ports:
+            - containerPort: 5050
+              protocol: TCP
+          # ConfigMap'ten ortam değişkenleri
+          envFrom:
+            - configMapRef:
+                name: mern-config
+          # Secret'tan hassas değişkenler
+          env:
+            - name: ATLAS_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mern-secrets
+                  key: ATLAS_URI
+          # Kaynak limitleri ve istekleri
+          resources:
+            requests:
+              cpu: "100m"       # 0.1 CPU garantili
+              memory: "128Mi"   # 128MB RAM garantili
+            limits:
+              cpu: "500m"       # Maksimum 0.5 CPU
+              memory: "512Mi"   # Maksimum 512MB RAM
+          # Hazırlık kontrolü - Pod trafik almaya hazır mı?
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5050
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Canlılık kontrolü - Pod çalışıyor mu?
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 5050
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+      # Graceful shutdown süresi
+      terminationGracePeriodSeconds: 30

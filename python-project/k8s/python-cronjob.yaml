@@ -1,0 +1,65 @@
+# =============================================================================
+# Kubernetes CronJob - Python ETL Script
+# Her 1 saatte bir çalışır (Acceptance Criteria: ETL.py every 1 hour)
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: python-etl
+  namespace: mern-app
+  labels:
+    app: python-etl
+    app.kubernetes.io/name: python-etl
+    app.kubernetes.io/component: etl
+spec:
+  # Her saat başı çalıştır (0. dakika)
+  schedule: "0 * * * *"
+
+  # Eş zamanlı çalışma politikası
+  # Forbid: Önceki job hala çalışıyorsa yeni job başlatma
+  concurrencyPolicy: Forbid
+
+  # Başarısız job geçmişi (debug için sakla)
+  failedJobsHistoryLimit: 3
+
+  # Başarılı job geçmişi
+  successfulJobsHistoryLimit: 3
+
+  # Kaçırılan job'ları başlatma süresi (100 saniye)
+  startingDeadlineSeconds: 100
+
+  jobTemplate:
+    spec:
+      # Job otomatik temizleme (tamamlandıktan 1 saat sonra)
+      ttlSecondsAfterFinished: 3600
+
+      # Başarısız olursa tekrar deneme (maks 2 kez)
+      backoffLimit: 2
+
+      template:
+        metadata:
+          labels:
+            app: python-etl
+        spec:
+          containers:
+            - name: python-etl
+              # ECR image URL'si - CI/CD pipeline tarafından güncellenecek
+              image: AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/mern-python-etl:latest
+              # Kaynak limitleri (ETL script hafif olduğu için düşük tutuldu)
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "256Mi"
+              # Ortam değişkenleri (gerekirse ConfigMap/Secret'tan alınabilir)
+              env:
+                - name: ENVIRONMENT
+                  value: "production"
+
+          # Job tamamlandığında pod'u tekrar başlatma
+          restartPolicy: OnFailure
+
+          # Graceful termination süresi
+          terminationGracePeriodSeconds: 30

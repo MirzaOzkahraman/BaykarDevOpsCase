@@ -1,0 +1,117 @@
+# =============================================================================
+# GitHub Actions CI/CD Pipeline - Python ETL
+# Sadece python-project/ altındaki değişikliklerde tetiklenir
+# Build → ECR Push → K8s CronJob Update
+# =============================================================================
+
+name: Python ETL CI/CD Pipeline
+
+# ---------------------------------------------------------------------------
+# Tetikleyiciler - Sadece python-project değişikliklerinde
+# ---------------------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'python-project/**'  # Sadece Python projesi değiştiğinde
+  workflow_dispatch:          # Manuel tetikleme
+
+# ---------------------------------------------------------------------------
+# Ortam Değişkenleri
+# ---------------------------------------------------------------------------
+env:
+  AWS_REGION: eu-west-1
+  ECR_REPO: mern-python-etl
+  EKS_CLUSTER_NAME: mern-app-eks
+  K8S_NAMESPACE: mern-app
+
+# ---------------------------------------------------------------------------
+# İzinler
+# ---------------------------------------------------------------------------
+permissions:
+  contents: read
+  id-token: write
+
+# =============================================================================
+# JOBS
+# =============================================================================
+jobs:
+  # ===========================================================================
+  # Job 1: Build Docker Image & Push to ECR
+  # ===========================================================================
+  build-and-push:
+    name: "🐳 Build & Push Python ETL Image"
+    runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Python ETL Image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd python-project
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG \
+                        -t $ECR_REGISTRY/$ECR_REPO:latest .
+          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPO:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ===========================================================================
+  # Job 2: Deploy CronJob to EKS
+  # ===========================================================================
+  deploy:
+    name: "🚀 Deploy CronJob to EKS"
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      # CronJob manifest'indeki image placeholder'ını güncelle ve uygula
+      - name: Deploy CronJob
+        env:
+          ETL_IMAGE: ${{ needs.build-and-push.outputs.image }}
+        run: |
+          # Image placeholder'ını gerçek ECR URL'si ile değiştir
+          sed -i "s|AWS_ACCOUNT_ID.dkr.ecr.AWS_REGION.amazonaws.com/mern-python-etl:latest|$ETL_IMAGE|g" \
+            python-project/k8s/python-cronjob.yaml
+
+          # CronJob manifest'ini uygula
+          kubectl apply -f python-project/k8s/python-cronjob.yaml
+
+          echo " Python ETL CronJob deploy edildi!"
+          echo ""
+          echo " CronJob durumu:"
+          kubectl get cronjob -n ${{ env.K8S_NAMESPACE }}

@@ -1,0 +1,96 @@
+# =============================================================================
+# Grafana Deployment ve Service
+# Prometheus verilerini görselleştirmek için dashboard arayüzü
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.3.0
+          ports:
+            - containerPort: 3000
+          env:
+            # Varsayılan admin kullanıcısı
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            # Admin şifresi (production'da Secret kullanılmalı)
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin123"
+            # Prometheus veri kaynağı otomatik yapılandırma
+            - name: GF_DATASOURCES_DEFAULT_NAME
+              value: "Prometheus"
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}  # Production'da PVC kullanılmalı
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+
+---
+# ---------------------------------------------------------------------------
+# Grafana DataSource Konfigürasyonu
+# Prometheus'u otomatik olarak veri kaynağı olarak ekler
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: true
+
+---
+# ---------------------------------------------------------------------------
+# Grafana Service - LoadBalancer ile dış erişim
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  type: LoadBalancer
+  selector:
+    app: grafana
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      name: http

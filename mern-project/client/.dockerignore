@@ -1,0 +1,35 @@
+# Dependencies - container içinde yeniden yüklenecek
+node_modules
+
+# Build çıktıları - container içinde oluşturulacak
+build
+dist
+
+# Git dosyaları
+.git
+.gitignore
+
+# IDE dosyaları
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test dosyaları
+cypress
+cypress.json
+coverage
+
+# Ortam dosyaları
+.env
+.env.local
+.env.*.local
+
+# Dokümantasyon
+README.md
+LICENSE
+
+# Docker dosyaları
+Dockerfile
+docker-compose*.yml
+.dockerignore

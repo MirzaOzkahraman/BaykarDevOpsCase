@@ -1,0 +1,11 @@
+# =============================================================================
+# Kubernetes Namespace - Uygulama izolasyonu
+# Tüm MERN bileşenleri bu namespace altında çalışır
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mern-app
+  labels:
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/managed-by: kubectl

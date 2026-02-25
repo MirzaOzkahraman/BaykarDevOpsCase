@@ -1,0 +1,101 @@
+# =============================================================================
+# Docker Compose - MERN Stack (Frontend + Backend + MongoDB)
+# Tüm servisleri tek komutla ayağa kaldırır: docker-compose up --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Frontend Servisi - React (Nginx ile)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: mern-frontend
+    ports:
+      - "3000:80" # Host:3000 → Container:80 (Nginx)
+    depends_on:
+      - backend # Backend hazır olduktan sonra başla
+    networks:
+      - mern-network
+    restart: unless-stopped
+    # Kaynak limitleri
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Backend Servisi - Node.js/Express API
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mern-backend
+    ports:
+      - "5050:5050" # API portunu dışarı aç (debugging için)
+    environment:
+      # MongoDB bağlantı URI'si - Docker network üzerinden
+      - ATLAS_URI=mongodb://root:example@mongodb:27017/sample_training?authSource=admin
+      - NODE_ENV=production
+    depends_on:
+      mongodb:
+        condition: service_healthy # MongoDB sağlıklı olduktan sonra başla
+    networks:
+      - mern-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # MongoDB Servisi - Veritabanı
+  # ---------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7
+    container_name: mern-mongodb
+    ports:
+      - "27017:27017" # Lokalde debug için dışarı aç
+    environment:
+      # Root kullanıcı bilgileri
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: sample_training
+    volumes:
+      # Veri kalıcılığı (container silinse bile veri korunur)
+      - mongodb_data:/data/db
+      # Başlangıç seed verisi (ilk çalıştırmada otomatik çalışır)
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - mern-network
+    restart: unless-stopped
+    # MongoDB sağlık kontrolü
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')", "-u", "root", "-p", "example", "--authenticationDatabase", "admin" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+# =============================================================================
+# Volumes - Kalıcı Veri Depolama
+# =============================================================================
+volumes:
+  mongodb_data:
+    driver: local
+
+# =============================================================================
+# Networks - Servisler Arası İletişim
+# =============================================================================
+networks:
+  mern-network:
+    driver: bridge

@@ -1,0 +1,227 @@
+# =============================================================================
+# GitHub Actions CI/CD Pipeline
+# Docker Build → ECR Push → Terraform → EKS Deploy
+# =============================================================================
+
+name: MERN Stack CI/CD Pipeline
+
+# ---------------------------------------------------------------------------
+# Tetikleyiciler (Triggers)
+# ---------------------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main        # main branch'e push yapıldığında
+    paths:
+      - 'mern-project/**'  # Sadece proje dosyaları değiştiğinde
+  pull_request:
+    branches:
+      - main
+  # Manuel tetikleme
+  workflow_dispatch:
+
+# ---------------------------------------------------------------------------
+# Ortam Değişkenleri (Global)
+# ---------------------------------------------------------------------------
+env:
+  AWS_REGION: eu-west-1
+  ECR_FRONTEND_REPO: mern-app/frontend
+  ECR_BACKEND_REPO: mern-app/backend
+  EKS_CLUSTER_NAME: mern-app-eks
+  K8S_NAMESPACE: mern-app
+
+# ---------------------------------------------------------------------------
+# İzinler
+# ---------------------------------------------------------------------------
+permissions:
+  contents: read
+  id-token: write  # OIDC ile AWS kimlik doğrulama için
+
+# =============================================================================
+# JOBS
+# =============================================================================
+jobs:
+  # ===========================================================================
+  # Job 1: Docker Build & ECR Push
+  # ===========================================================================
+  build-and-push:
+    name: "🐳 Build & Push Docker Images"
+    runs-on: ubuntu-latest
+
+    outputs:
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+      backend-image: ${{ steps.build-backend.outputs.image }}
+
+    steps:
+      # Kaynak kodu çek
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # AWS kimlik bilgilerini yapılandır
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Amazon ECR'a giriş yap
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Frontend Docker image build & push
+      - name: Build & Push Frontend Image
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd mern-project/client
+          docker build -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG \
+                        -t $ECR_REGISTRY/$ECR_FRONTEND_REPO:latest .
+          docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_FRONTEND_REPO:latest
+          echo "image=$ECR_REGISTRY/$ECR_FRONTEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # Backend Docker image build & push
+      - name: Build & Push Backend Image
+        id: build-backend
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd mern-project/server
+          docker build -t $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG \
+                        -t $ECR_REGISTRY/$ECR_BACKEND_REPO:latest .
+          docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_BACKEND_REPO:latest
+          echo "image=$ECR_REGISTRY/$ECR_BACKEND_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ===========================================================================
+  # Job 2: Terraform Infrastructure
+  # ===========================================================================
+  terraform:
+    name: " Terraform Infrastructure"
+    runs-on: ubuntu-latest
+    needs: build-and-push  # Build başarılı olduktan sonra çalış
+    # Sadece main branch push'larında çalış (PR'larda sadece plan)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    defaults:
+      run:
+        working-directory: mern-project/terraform
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Terraform CLI kurulumu
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      # Terraform başlat (provider'ları indir)
+      - name: Terraform Init
+        run: terraform init
+
+      # Değişiklikleri planla (dry-run)
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -no-color
+        continue-on-error: false
+
+      # Altyapıyı uygula
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+  # ===========================================================================
+  # Job 3: Deploy to EKS
+  # ===========================================================================
+  deploy:
+    name: "🚀 Deploy to EKS"
+    runs-on: ubuntu-latest
+    needs: [build-and-push, terraform]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # kubectl yapılandır (EKS cluster'a bağlan)
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      # Kubernetes manifestlerini uygula
+      - name: Apply Kubernetes Manifests
+        run: |
+          cd mern-project/k8s
+
+          # Namespace oluştur (yoksa)
+          kubectl apply -f namespace.yaml
+
+          # ConfigMap ve Secret'ları uygula
+          kubectl apply -f configmap.yaml
+          kubectl apply -f secrets.yaml
+
+          # MongoDB StatefulSet ve Service
+          kubectl apply -f mongodb-service.yaml
+          kubectl apply -f mongodb-statefulset.yaml
+
+          # Backend ve Frontend Deployment/Service
+          kubectl apply -f backend-service.yaml
+          kubectl apply -f backend-deployment.yaml
+          kubectl apply -f frontend-service.yaml
+          kubectl apply -f frontend-deployment.yaml
+
+          # HPA tanımları
+          kubectl apply -f backend-hpa.yaml
+          kubectl apply -f frontend-hpa.yaml
+
+      # Deployment image'larını güncelle (rolling update başlat)
+      - name: Update Deployment Images
+        env:
+          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend-image }}
+          BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend-image }}
+        run: |
+          # Backend image güncelle
+          kubectl set image deployment/backend \
+            backend=$BACKEND_IMAGE \
+            -n ${{ env.K8S_NAMESPACE }}
+
+          # Frontend image güncelle
+          kubectl set image deployment/frontend \
+            frontend=$FRONTEND_IMAGE \
+            -n ${{ env.K8S_NAMESPACE }}
+
+      # Deployment durumunu kontrol et
+      - name: Verify Deployment
+        run: |
+          echo " Backend deployment bekleniyor..."
+          kubectl rollout status deployment/backend -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+
+          echo " Frontend deployment bekleniyor..."
+          kubectl rollout status deployment/frontend -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+
+          echo " Deployment başarılı!"
+          echo ""
+          echo " Pod durumları:"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo " Servis durumları:"
+          kubectl get svc -n ${{ env.K8S_NAMESPACE }}

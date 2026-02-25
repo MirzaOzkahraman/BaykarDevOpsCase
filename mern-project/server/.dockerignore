@@ -1,0 +1,30 @@
+# Dependencies - container içinde yeniden yüklenecek
+node_modules
+
+# Git dosyaları
+.git
+.gitignore
+
+# IDE dosyaları
+.vscode
+.idea
+*.swp
+*.swo
+
+# Ortam/Config dosyaları (Docker Compose'dan gelecek)
+.env
+.env.*
+config.env
+
+# Test dosyaları
+coverage
+__tests__
+
+# Dokümantasyon
+README.md
+LICENSE
+
+# Docker dosyaları
+Dockerfile
+docker-compose*.yml
+.dockerignore

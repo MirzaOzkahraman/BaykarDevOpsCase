@@ -1,0 +1,50 @@
+# =============================================================================
+# Backend HPA - Horizontal Pod Autoscaler
+# CPU kullanımına göre otomatik ölçeklendirme
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: mern-app
+  labels:
+    app: backend
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2   # Minimum 2 pod (yüksek erişilebilirlik)
+  maxReplicas: 10  # Maksimum 10 pod
+  metrics:
+    # CPU bazlı ölçeklendirme
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # CPU %70'i aştığında scale up
+    # Memory bazlı ölçeklendirme
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Memory %80'i aştığında scale up
+  behavior:
+    # Scale up davranışı
+    scaleUp:
+      stabilizationWindowSeconds: 60   # 60 saniye bekle
+      policies:
+        - type: Pods
+          value: 2                      # Her seferinde en fazla 2 pod ekle
+          periodSeconds: 60
+    # Scale down davranışı (daha yavaş, kararsızlığı önle)
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 dakika bekle
+      policies:
+        - type: Pods
+          value: 1                      # Her seferinde en fazla 1 pod kaldır
+          periodSeconds: 120

@@ -1,0 +1,101 @@
+# =============================================================================
+# MongoDB StatefulSet - Kalıcı Veri ile Veritabanı
+# StatefulSet: Pod'lar stabil hostname ve kalıcı storage alır
+# =============================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: mern-app
+  labels:
+    app: mongodb
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: database
+spec:
+  serviceName: mongodb-headless  # Headless service adı
+  replicas: 1                    # Tek instance 
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        app.kubernetes.io/name: mern-app
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7
+          ports:
+            - containerPort: 27017
+              protocol: TCP
+              name: mongodb
+          env:
+            # Root kullanıcı adı
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: "root"
+            # Root şifresi (Secret'tan)
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mern-secrets
+                  key: MONGO_ROOT_PASSWORD
+            # Başlangıç veritabanı
+            - name: MONGO_INITDB_DATABASE
+              value: "sample_training"
+          # Kalıcı depolama mount noktası
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+          # Kaynak limitleri
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # Hazırlık kontrolü
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+                - -u
+                - root
+                - -p
+                - example
+                - --authenticationDatabase
+                - admin
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          # Canlılık kontrolü
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+                - -u
+                - root
+                - -p
+                - example
+                - --authenticationDatabase
+                - admin
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+
+  # PersistentVolumeClaim şablonu - Her pod için ayrı disk
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp2  # AWS EBS (General Purpose SSD)
+        resources:
+          requests:
+            storage: 10Gi  # 10GB disk

@@ -1,0 +1,18 @@
+# =============================================================================
+# ConfigMap - Uygulama Yapılandırması (Hassas olmayan veriler)
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mern-config
+  namespace: mern-app
+  labels:
+    app.kubernetes.io/name: mern-app
+data:
+  # Backend ayarları
+  NODE_ENV: "production"
+  PORT: "5050"
+  # MongoDB veritabanı adı
+  MONGO_DATABASE: "sample_training"
+  # Frontend Nginx ayarları
+  NGINX_PORT: "80"

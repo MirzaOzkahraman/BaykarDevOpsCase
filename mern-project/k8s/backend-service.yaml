@@ -1,0 +1,22 @@
+# =============================================================================
+# Backend Service - ClusterIP (Sadece cluster içi erişim)
+# Frontend (Nginx) bu servis üzerinden backend'e ulaşır
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: mern-app
+  labels:
+    app: backend
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP  # Sadece cluster içinden erişilebilir
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 5050        # Service portu
+      targetPort: 5050  # Container portu
+      name: http

@@ -1,0 +1,23 @@
+# Dependencies
+__pycache__
+*.pyc
+*.pyo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Terraform
+terraform/
+.terraform/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Docs
+README.md

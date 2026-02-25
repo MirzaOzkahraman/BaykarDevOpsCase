@@ -1,0 +1,26 @@
+# =============================================================================
+# Frontend Service - LoadBalancer (Dış dünyadan erişim)
+# AWS'de bu otomatik olarak bir ELB/NLB oluşturur
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: mern-app
+  labels:
+    app: frontend
+    app.kubernetes.io/name: mern-app
+    app.kubernetes.io/component: frontend
+  annotations:
+    # AWS Load Balancer Controller ayarları
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+spec:
+  type: LoadBalancer  # Dış dünyadan erişilebilir (AWS ELB oluşturur)
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 80         # LoadBalancer portu (dışarıdan 80 ile erişilir)
+      targetPort: 80   # Container portu
+      name: http
